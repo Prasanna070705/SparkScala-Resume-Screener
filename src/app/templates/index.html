@@ -1,0 +1,139 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Resume Screener — Local UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f9f9f9;
+      padding: 24px;
+      max-width: 900px;
+      margin: auto;
+    }
+    h1 {
+      margin-bottom: 24px;
+      text-align: center;
+      color: #333;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    label, select, input, button {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      font-size: 16px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover { background-color: #45a049; }
+    #results {
+      margin-top: 12px;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .skill {
+      display:inline-block;
+      margin:3px;
+      padding:6px 10px;
+      border-radius:6px;
+      background:#f1f1f1;
+      font-size: 14px;
+    }
+    .match { background:#d4f8d4; }
+    .percentage {
+      font-size: 24px;
+      color: #4CAF50;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Resume Screener</h1>
+
+  <div class="card">
+    <form id="uploadForm">
+      <label for="job">Choose a job description:</label>
+      <select id="job" name="job" required>
+        {% for j in jobs %}
+          <option value="{{j}}">{{j}}</option>
+        {% endfor %}
+      </select>
+
+      <label for="resume">Upload resume (PDF):</label>
+      <input type="file" id="resume" name="resume" accept="application/pdf" required />
+
+      <button type="submit">Check Fit</button>
+    </form>
+  </div>
+
+  <div id="output" class="card" style="display:none;">
+    <h3>Results</h3>
+    <div id="results"></div>
+  </div>
+
+<script>
+document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const fileInput = document.getElementById("resume");
+  if (!fileInput.files.length) { alert("Please upload a PDF resume"); return; }
+
+  document.getElementById("output").style.display = "block";
+  document.getElementById("results").textContent = "Processing...";
+
+  try {
+    const resp = await fetch("/predict", { method: "POST", body: fd });
+    const data = await resp.json();
+    if (!resp.ok) {
+      document.getElementById("results").textContent = "Error: " + (data.error || JSON.stringify(data));
+      return;
+    }
+
+    let html = "";
+    html += `<strong>Selected role:</strong> ${data.selected_job}\n`;
+    html += `<strong>Job description:</strong> ${data.job_description}\n\n`;
+    html += `<strong>Model predicted label:</strong> ${data.predicted_label_by_model} (confidence: ${data.model_confidence})\n`;
+    html += `<strong>Combined fit score:</strong> <span class="percentage">${(data.combined_fit_score*100).toFixed(1)}%</span>\n\n`;
+
+    html += `<strong>Required skills:</strong>\n`;
+    for (const s of data.required_skills) {
+      const cls = data.skill_overlap.includes(s.toLowerCase()) ? "match" : "";
+      html += `<span class="skill ${cls}">${s}</span> `;
+    }
+    html += `\n\n<strong>Resume skills found:</strong>\n`;
+    if (data.resume_skills_found.length === 0) {
+      html += "(none detected via keyword match)\n";
+    } else {
+      for (const s of data.resume_skills_found) {
+        html += `<span class="skill">${s}</span> `;
+      }
+      html += "\n";
+    }
+
+    html += `\n<strong>Skill overlap (matched skills):</strong> ${data.skill_overlap.join(", ") || "(none)"}\n`;
+    html += `<strong>Skill match ratio:</strong> ${(data.skill_match_ratio*100).toFixed(1)}%\n`;
+
+    document.getElementById("results").innerHTML = html;
+  } catch (err) {
+    document.getElementById("results").textContent = "Error: " + err.toString();
+  }
+});
+</script>
+</body>
+</html>
